@@ -5,7 +5,7 @@ require("dotenv").config();
 const ETHERSCAN_API_KEY = vars.get("ETHERSCAN_API_KEY");
 const config = {
   solidity: {
-    version: "0.8.24",
+    version: "0.8.17",
   },
   networks: {
     "base-polygon": {
