@@ -4,10 +4,10 @@ pragma solidity ^0.8.17;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract CustomToken is ERC20, Ownable {
-    uint256 public defaultFeePercentage = 1; // Default fee percentage (1%)
+contract PSToken is ERC20, Ownable {
+    uint256 public feePercentage = 1; // Default fee percentage (0.1%)
     address public feeAddress;
-    mapping(address => uint256) public customFeePercentages;
+    uint256 public accumulatedFees;
 
     constructor(
         string memory name,
@@ -29,19 +29,15 @@ contract CustomToken is ERC20, Ownable {
         address to,
         uint256 amount
     ) public override returns (bool) {
-        uint256 feePercentage = _getFeePercentage(_msgSender());
-        uint256 feeAmount = (amount * feePercentage) / 100;
+        uint256 feeAmount = msg.sender == owner()
+            ? 0
+            : (amount * feePercentage) / 1000;
         uint256 amountAfterFee = amount - feeAmount;
         _transfer(_msgSender(), to, amountAfterFee);
-        _transfer(_msgSender(), feeAddress, feeAmount); // Transfer the fee to the fee address
-        return true;
-    }
-
-    function transferWithoutFee(
-        address to,
-        uint256 amount
-    ) public onlyOwner returns (bool) {
-        _transfer(_msgSender(), to, amount);
+        if (feeAmount > 0) {
+            _transfer(_msgSender(), address(this), feeAmount);
+            accumulatedFees += feeAmount; // Accumulate the fee in the contract
+        }
         return true;
     }
 
@@ -57,11 +53,16 @@ contract CustomToken is ERC20, Ownable {
         address to,
         uint256 amount
     ) public override returns (bool) {
-        uint256 feePercentage = _getFeePercentage(from);
-        uint256 feeAmount = (amount * feePercentage) / 100;
+        uint256 feeAmount = from == owner()
+            ? 0
+            : (amount * feePercentage) / 1000;
         uint256 amountAfterFee = amount - feeAmount;
         _transfer(from, to, amountAfterFee);
-        _transfer(from, feeAddress, feeAmount); // Transfer the fee to the fee address
+
+        if (feeAmount > 0) {
+            accumulatedFees += feeAmount; // Accumulate the fee in the contract
+            _transfer(_msgSender(), address(this), feeAmount);
+        }
         _approve(from, _msgSender(), allowance(from, _msgSender()) - amount);
         return true;
     }
@@ -70,21 +71,21 @@ contract CustomToken is ERC20, Ownable {
         feeAddress = _feeAddress;
     }
 
-    function setDefaultFeePercentage(uint256 _feePercentage) public onlyOwner {
-        defaultFeePercentage = _feePercentage;
+    function setFeePercentage(uint256 _feePercentage) public onlyOwner {
+        feePercentage = _feePercentage;
     }
 
-    function setCustomFeePercentage(
-        address account,
-        uint256 _feePercentage
-    ) public onlyOwner {
-        customFeePercentages[account] = _feePercentage;
+    function harvestFees() public onlyOwner {
+        require(accumulatedFees > 0, "No fees to harvest");
+        _transfer(address(this), feeAddress, accumulatedFees);
+        accumulatedFees = 0;
     }
 
-    function _getFeePercentage(address account) private view returns (uint256) {
-        return
-            customFeePercentages[account] > 0
-                ? customFeePercentages[account]
-                : defaultFeePercentage;
+    function getContractBalance() public view returns (uint256) {
+        return balanceOf(address(this));
+    }
+
+    function getTokenBalance(address account) public view returns (uint256) {
+        return balanceOf(account);
     }
 }

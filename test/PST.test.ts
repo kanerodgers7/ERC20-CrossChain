@@ -1,7 +1,7 @@
 import { ethers } from "hardhat";
 import { expect } from "chai";
 
-describe("CustomToken", function () {
+describe("PSToken", function () {
   let customToken: any;
   let owner: any;
   let addr1: any;
@@ -9,69 +9,67 @@ describe("CustomToken", function () {
   let feeAddress: any;
 
   beforeEach(async function () {
-    const CustomTokenFactory = await ethers.getContractFactory("CustomToken");
+    const CustomTokenFactory = await ethers.getContractFactory("PSToken");
     [owner, addr1, addr2, feeAddress] = await ethers.getSigners();
 
     customToken = await CustomTokenFactory.deploy(
-      "CustomToken",
-      "CTK",
+      "PSToken",
+      "PST-AMZ",
       feeAddress.address
     );
     return {customToken, owner, addr1, addr2, feeAddress}
   });
 
-  it("Should mint tokens to an address", async function () {
+  it("Should mint tokens correctly", async function () {
     await customToken.mint(addr1.address, 1000);
     expect(await customToken.balanceOf(addr1.address)).to.equal(1000);
   });
 
-  it("Should burn tokens from an address", async function () {
+  it("Should burn tokens correctly", async function () {
     await customToken.mint(addr1.address, 1000);
     await customToken.connect(addr1).burn(500);
     expect(await customToken.balanceOf(addr1.address)).to.equal(500);
   });
 
-  it("Should transfer tokens with default fee", async function () {
+  it("Should transfer tokens with fee", async function () {
+    await customToken.mint(addr1.address, 10000);
+    await customToken.connect(addr1).transfer(addr2.address, 5000);
+    const fee = (5000 * 1) / 1000; // 0.1% fee
+    expect(await customToken.balanceOf(addr2.address)).to.equal(5000 - fee);
+    expect(await customToken.accumulatedFees()).to.equal(fee);
+  });
+
+  it("Should transfer tokens without fee for owner", async function () {
     await customToken.mint(owner.address, 1000);
-    await customToken.transfer(addr1.address, 500);
-    expect(await customToken.balanceOf(addr1.address)).to.equal(495); // Assuming 1% fee
-    expect(await customToken.balanceOf(feeAddress.address)).to.equal(5); // Fee collected
+    await customToken.transfer(addr2.address, 500);
+    expect(await customToken.balanceOf(addr2.address)).to.equal(500);
+    expect(await customToken.accumulatedFees()).to.equal(0);
   });
 
-  it("Should transfer tokens with custom fee", async function () {
-    await customToken.mint(owner.address, 1000);
-    await customToken.setCustomFeePercentage(owner.address, 2); // Set custom fee to 2%
-    await customToken.transfer(addr1.address, 500);
-    expect(await customToken.balanceOf(addr1.address)).to.equal(490); // Assuming 2% fee
-    expect(await customToken.balanceOf(feeAddress.address)).to.equal(10); // Fee collected
+  it("Should harvest fees correctly", async function () {
+    await customToken.mint(addr1.address, 10000);
+    await customToken.connect(addr1).transfer(addr2.address, 5000);
+    const fee = (5000 * 1) / 1000; // 0.1% fee
+    await customToken.harvestFees();
+    expect(await customToken.balanceOf(feeAddress.address)).to.equal(fee);
+    expect(await customToken.accumulatedFees()).to.equal(0);
   });
 
-  it("Should transfer tokens without fee by owner", async function () {
-    await customToken.mint(owner.address, 1000);
-    await customToken.transferWithoutFee(addr1.address, 500);
-    expect(await customToken.balanceOf(addr1.address)).to.equal(500);
+  it("Should set fee address correctly", async function () {
+    await customToken.setFeeAddress(addr1.address);
+    expect(await customToken.feeAddress()).to.equal(addr1.address);
   });
 
-  it("Should approve and transfer tokens from an address with default fee", async function () {
-    await customToken.mint(owner.address, 1000);
-    await customToken.approve(addr1.address, 500);
-    await customToken.connect(addr1).transferFrom(owner.address, addr2.address, 500);
-    expect(await customToken.balanceOf(addr2.address)).to.equal(495); // Assuming 1% fee
-    expect(await customToken.balanceOf(feeAddress.address)).to.equal(5); // Fee collected
+  it("Should set fee percentage correctly", async function () {
+    await customToken.setFeePercentage(2);
+    expect(await customToken.feePercentage()).to.equal(2);
   });
 
-  it("Should set fee address", async function () {
-    await customToken.setFeeAddress(addr2.address);
-    expect(await customToken.feeAddress()).to.equal(addr2.address);
+  it("Should return the correct token balance of an address", async function () {
+    await customToken.mint(addr1.address, 1000);
+    const balance = await customToken.getTokenBalance(addr1.address);
+    expect(balance).to.equal(1000);
+    expect
   });
-
-  it("Should set default fee percentage", async function () {
-    await customToken.setDefaultFeePercentage(2);
-    expect(await customToken.defaultFeePercentage()).to.equal(2);
-  });
-
-  it("Should set custom fee percentage", async function () {
-    await customToken.setCustomFeePercentage(addr1.address, 2);
-    expect(await customToken.customFeePercentages(addr1.address)).to.equal(2);
-  });
+  
 });
