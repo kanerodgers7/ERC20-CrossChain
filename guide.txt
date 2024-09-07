@@ -1,2 +1,0 @@
-
-npx hardhat ignition deploy ignition\modules\deploy.ts  --network sepolia --verify
