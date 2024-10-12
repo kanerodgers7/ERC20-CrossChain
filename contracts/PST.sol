@@ -5,19 +5,39 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract PSToken is ERC20, Ownable {
-    uint256 public feePercentage = 1; // Default fee percentage (0.1%)
+    uint256 public feeNominator = 1; // Default fee percentage (0.1%)
+    uint256 public feeDenominator = 1000; // Default fee percentage (0.1%)
     address public feeAddress;
     uint256 public accumulatedFees;
+    uint8 private _decimals;
+
+    uint256 public MAX_SUPPLY;
+
+    mapping(address => bool) private _isHolder;
+    address[] private _holders;
 
     constructor(
         string memory name,
         string memory symbol,
-        address _feeAddress
+        address _feeAddress,
+        uint8 decimals_,
+        uint256 _maxSupply
     ) ERC20(name, symbol) {
         feeAddress = _feeAddress;
+        _decimals = decimals_ == 0 ? 18 : decimals_;
+        MAX_SUPPLY = _maxSupply * 10 ** uint256(_decimals); // Set MAX_SUPPLY in the constructor
+    }
+
+    // Override the decimals function to return the custom value
+    function decimals() public view virtual override returns (uint8) {
+        return _decimals;
     }
 
     function mint(address to, uint256 amount) public onlyOwner {
+        require(
+            totalSupply() + amount <= MAX_SUPPLY,
+            "Minting would exceed max supply"
+        );
         _mint(to, amount);
     }
 
@@ -31,7 +51,7 @@ contract PSToken is ERC20, Ownable {
     ) public override returns (bool) {
         uint256 feeAmount = msg.sender == owner()
             ? 0
-            : (amount * feePercentage) / 1000;
+            : (amount * feeNominator) / feeDenominator;
         uint256 amountAfterFee = amount - feeAmount;
         _transfer(_msgSender(), to, amountAfterFee);
         if (feeAmount > 0) {
@@ -53,15 +73,19 @@ contract PSToken is ERC20, Ownable {
         address to,
         uint256 amount
     ) public override returns (bool) {
+        require(
+            allowance(from, _msgSender()) >= amount,
+            "Insufficient allowance"
+        );
         uint256 feeAmount = from == owner()
             ? 0
-            : (amount * feePercentage) / 1000;
+            : (amount * feeNominator) / feeDenominator;
         uint256 amountAfterFee = amount - feeAmount;
         _transfer(from, to, amountAfterFee);
 
         if (feeAmount > 0) {
             accumulatedFees += feeAmount; // Accumulate the fee in the contract
-            _transfer(_msgSender(), address(this), feeAmount);
+            _transfer(from, address(this), feeAmount);
         }
         _approve(from, _msgSender(), allowance(from, _msgSender()) - amount);
         return true;
@@ -71,8 +95,12 @@ contract PSToken is ERC20, Ownable {
         feeAddress = _feeAddress;
     }
 
-    function setFeePercentage(uint256 _feePercentage) public onlyOwner {
-        feePercentage = _feePercentage;
+    function setFeeFactor(
+        uint256 _nominator,
+        uint256 _denominator
+    ) public onlyOwner {
+        feeNominator = _nominator;
+        feeDenominator = _denominator;
     }
 
     function harvestFees() public onlyOwner {
@@ -81,11 +109,12 @@ contract PSToken is ERC20, Ownable {
         accumulatedFees = 0;
     }
 
-    function getContractBalance() public view returns (uint256) {
-        return balanceOf(address(this));
+    function transferFee(uint256 _amount) public view returns (uint256) {
+        return _amount / (feeDenominator - feeNominator);
     }
-
-    function getTokenBalance(address account) public view returns (uint256) {
-        return balanceOf(account);
+    
+    // Added to make it easy for our DEX to recognise PSTs
+    function isPst() public pure returns (bool) {
+        return true;
     }
 }
